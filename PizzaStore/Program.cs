@@ -1,12 +1,14 @@
 using Microsoft.OpenApi.Models;
-using Microsoft.EntityFrameworkCore;
 using PizzaStore.Models;
+using PizzaStore.Repository;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Pizzas") ?? "Data Source=Pizzas.db";
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSqlite<PizzaDb>(connectionString);
+builder.Services.AddScoped<IPizzaRepository, PizzaRepository>();
+
 builder.Services.AddSwaggerGen(c =>
 {
      c.SwaggerDoc("v1", new OpenApiInfo {
@@ -22,33 +24,29 @@ app.UseSwaggerUI(c =>
    c.SwaggerEndpoint("/swagger/v1/swagger.json", "PizzaStore API V1");
 });
 
-app.MapGet("/pizzas", async (PizzaDb db) => await db.Pizzas.ToListAsync());
-app.MapPost("/pizza", async (PizzaDb db, Pizza pizza) =>
+app.MapGet("/pizzas", async (IPizzaRepository repository) => await repository.GetPizzasAsync());
+app.MapPost("/pizza", async (IPizzaRepository repository, Pizza pizza) =>
 {
-    await db.Pizzas.AddAsync(pizza);
-    await db.SaveChangesAsync();
+    await repository.AddPizzaAsync(pizza);
     return Results.Created($"/pizza/{pizza.Id}", pizza);
 });
-app.MapGet("/pizza/{id}", async (PizzaDb db, int id) => await db.Pizzas.FindAsync(id));
-app.MapPut("/pizza/{id}", async (PizzaDb db, Pizza updatepizza, int id) =>
+app.MapGet("/pizza/{id}", async (IPizzaRepository repository, int id) => await repository.GetPizzaByIdAsync(id));
+app.MapPut("/pizza/{id}", async (IPizzaRepository repository, Pizza updatepizza, int id) =>
 {
-      var pizza = await db.Pizzas.FindAsync(id);
-      if (pizza is null) return Results.NotFound();
-      pizza.Name = updatepizza.Name;
-      pizza.Description = updatepizza.Description;
-      await db.SaveChangesAsync();
-      return Results.NoContent();
+    var pizza = await repository.GetPizzaByIdAsync(id);
+    if (pizza is null) return Results.NotFound();
+    
+    pizza.Name = updatepizza.Name;
+    pizza.Description = updatepizza.Description;
+    
+    await repository.UpdatePizzaAsync(pizza);
+    return Results.NoContent();
 });
-app.MapDelete("/pizza/{id}", async (PizzaDb db, int id) =>
+app.MapDelete("/pizza/{id}", async (IPizzaRepository repository, int id) =>
 {
-   var pizza = await db.Pizzas.FindAsync(id);
-   if (pizza is null)
-   {
-      return Results.NotFound();
-   }
-   db.Pizzas.Remove(pizza);
-   await db.SaveChangesAsync();
-   return Results.Ok();
+    await repository.DeletePizzaAsync(id);
+    return Results.Ok();
 });
+
 
 app.Run();
